@@ -40,6 +40,8 @@ DB_CHARSET=utf8mb4
 ## 🚀 실행
  
 Cursor IDE에서 `MCP Server` 추가 > `Transport: stdio` > `Command: python main.py`
+
+Cursor IDE에 MCP 서버 추가시 JSON env 환경값을 전달하여 프로젝트별 DB 연결 정보를 개별적으로 설정 할 수 있습니다.
  
 ## 📡 지원 메서드
  
@@ -130,3 +132,27 @@ Cursor IDE에서 `MCP Server` 추가 > `Transport: stdio` > `Command: python mai
  
 - Python 3.8+
 - MySQL/MariaDB
+
+## 🛠️ Cursor IDE에서 MCP 서버 사용법
+
+Cursor IDE에서 MCP Server를 프로젝트별로 등록할 때, 아래와 같이 환경변수를 JSON 형태로 전달하여 각 프로젝트별 DB 연결 정보를 개별적으로 설정할 수 있습니다.
+
+예시:
+
+```json
+{
+  "mcpServers": {
+    "db-mcp-server": {
+      "transport": "stdio",
+      "command": "/path/to/venv/bin/python",
+      "args": ["/path/to/db-mcp-server/main.py"],
+      "env": {
+        "DB_NAME": "your_db_name"
+      }
+    }
+  }
+}
+```
+
+- `env` 항목에 DB 연결에 필요한 환경변수(`DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` 등)를 자유롭게 지정할 수 있습니다.
+- 이 방식으로 여러 프로젝트에서 각기 다른 DB에 연결하여 사용할 수 있습니다.
