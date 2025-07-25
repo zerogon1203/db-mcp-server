@@ -193,9 +193,3 @@ db-mcp-server/
 ## 📄 라이센스
 
 이 프로젝트는 MIT 라이센스 하에 있습니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
-
-## 🙏 감사의 말
-
-- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) - MCP 프레임워크 제공
-- [FastMCP](https://github.com/pydantic/FastMCP) - 빠른 MCP 서버 구현
-- [Mermaid](https://mermaid.js.org/) - 다이어그램 시각화 도구
