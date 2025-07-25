@@ -1,21 +1,30 @@
-# MCP Stdio Server (MySQL/MariaDB)
- 
- 이 프로젝트는 Cursor IDE와 연동 가능한 Model Context Protocol (MCP) Stdio 서버입니다.
- MySQL 또는 MariaDB 데이터베이스의 테이블 구조와 관계를 반환합니다.
- 
-## ✅ 기능
- 
-- MCP 공식 Python SDK 기반
-- `stdio` 모드로 Cursor IDE 연동
-- `.env` 파일 기반 DB 설정
-- 테이블 목록, 컬럼, 외래키 관계 반환
-- 데이터 조회 및 분석 기능
-- 쿼리 실행 및 최적화 기능
-- 데이터베이스 모니터링 기능
-- 성능 분석 및 최적화 제안
- 
+# 🗄️ MCP Database Server
+
+> **다중 데이터베이스 지원 MCP 서버** - Cursor IDE 및 Claude와 연동 가능한 Model Context Protocol 서버
+
+MySQL, PostgreSQL을 지원하는 강력한 데이터베이스 분석 및 시각화 도구입니다.
+
+## ✨ 주요 기능
+
+### 🎯 **다중 데이터베이스 지원**
+- **MySQL/MariaDB** - 완전 지원
+- **PostgreSQL** - 완전 지원  
+- **SQLite** - 기본 지원 (준비 중)
+
+### 📊 **시각화 도구**
+- **Mermaid ERD 생성** - 데이터베이스 스키마를 Mermaid 다이어그램으로
+- **마크다운 테이블 요약** - 테이블 정보를 깔끔한 표로 정리
+- **ASCII 성능 차트** - 테이블 크기와 인덱스 효율성을 시각적으로
+
+### 🔍 **분석 기능**
+- 스키마 분석 및 조회
+- 테이블별 통계 정보
+- 성능 병목 지점 탐지
+- 인덱스 최적화 제안
+- 쿼리 실행 계획 분석
+
 ## 📦 설치
- 
+
 ```bash
 git clone <this-repo-url>
 cd db-mcp-server
@@ -23,122 +32,52 @@ python -m venv venv
 source venv/bin/activate  # 또는 venv\Scripts\activate (Windows)
 pip install -r requirements.txt
 ```
- 
-## ⚙️ .env 설정
- 
-루트에 `.env` 파일을 아래와 같이 작성하세요:
- 
+
+## ⚙️ 설정
+
+### 환경변수 설정
+
+`.env` 파일을 생성하고 데이터베이스 정보를 설정하세요:
+
+```bash
+cp .env.example .env
+```
+
+### MySQL/MariaDB 설정
 ```env
-# Database connection settings for MCP Python server
+DB_TYPE=mysql
 DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=your_password
-DB_NAME=your_db
+DB_NAME=your_database
 DB_CHARSET=utf8mb4
-```
- 
-## 🚀 실행
- 
-Cursor IDE에서 `MCP Server` 추가 > `Transport: stdio` > `Command: python main.py`
-
-Cursor IDE에 MCP 서버 추가시 JSON env 환경값을 전달하여 프로젝트별 DB 연결 정보를 개별적으로 설정 할 수 있습니다.
- 
-## 📡 지원 메서드
- 
-### 스키마 조회
-- `mysql.get_schema`: 모든 테이블 구조 + 외래키 반환
-
-### 데이터 조회 및 분석
-- `mysql.get_table_stats`: 테이블별 통계 정보 (행 수, NULL 값 비율, 고유값 수)
-- `mysql.get_sample_data`: 테이블의 샘플 데이터 조회
-- `mysql.get_column_stats`: 특정 컬럼의 상세 통계 정보
-
-### 쿼리 실행 및 최적화
-- `mysql.execute_query`: 안전한 읽기 전용 쿼리 실행
-- `mysql.explain_query`: 쿼리 실행 계획 분석
-- `mysql.optimize_query`: 쿼리 최적화 제안
-
-### 데이터베이스 모니터링
-- `mysql.get_db_status`: 데이터베이스 상태 정보 (연결 수, 쿼리 통계 등)
-- `mysql.get_table_size`: 테이블별 크기 정보
-- `mysql.get_index_usage`: 인덱스 사용 통계
-
-### 성능 분석
-- `mysql.analyze_performance`: 성능 병목 지점 분석
-- `mysql.suggest_indexes`: 인덱스 생성 제안
-- `mysql.optimize_tables`: 테이블 최적화 제안
- 
-## 📝 예시 결과
- 
-### 스키마 조회
-```json
-{
-  "schema": {
-    "users": {
-      "columns": [...],
-      "foreign_keys": [...]
-    }
-  }
-}
+DB_PORT=3306
 ```
 
-### 테이블 통계
-```json
-{
-  "table_name": "users",
-  "total_rows": 1000,
-  "column_stats": {
-    "id": {
-      "total_rows": 1000,
-      "null_count": 0,
-      "null_ratio": 0.0,
-      "unique_values": 1000
-    }
-  }
-}
+### PostgreSQL 설정
+```env
+DB_TYPE=postgresql
+DB_HOST=localhost
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=your_database
+DB_PORT=5432
+DB_SCHEMA=public
 ```
 
-### 쿼리 실행 계획
-```json
-{
-  "explain_plan": [...],
-  "handler_stats": {...},
-  "suggestions": [
-    {
-      "type": "index",
-      "message": "정렬 작업이 발생하고 있습니다. ORDER BY 절에 사용된 컬럼에 대한 인덱스 추가를 고려하세요."
-    }
-  ]
-}
+### SQLite 설정
+```env
+DB_TYPE=sqlite
+DB_PATH=./database.sqlite
 ```
 
-### 성능 분석
-```json
-{
-  "slow_queries": 5,
-  "bottlenecks": [
-    {
-      "type": "large_table",
-      "table": "orders",
-      "rows": 1500000,
-      "message": "테이블 'orders'이(가) 1,500,000개의 행을 가지고 있습니다. 파티셔닝을 고려하세요."
-    }
-  ],
-  "recommendations": [...]
-}
-```
- 
-## ✅ 요구사항
- 
-- Python 3.8+
-- MySQL/MariaDB
+## 🚀 사용법
 
-## 🛠️ Cursor IDE에서 MCP 서버 사용법
+### Cursor IDE 연동
 
-Cursor IDE에서 MCP Server를 프로젝트별로 등록할 때, 아래와 같이 환경변수를 JSON 형태로 전달하여 각 프로젝트별 DB 연결 정보를 개별적으로 설정할 수 있습니다.
+`MCP Server` 추가 → `Transport: stdio` → `Command: python main.py`
 
-예시:
-
+**환경변수 개별 설정:**
 ```json
 {
   "mcpServers": {
@@ -147,12 +86,116 @@ Cursor IDE에서 MCP Server를 프로젝트별로 등록할 때, 아래와 같�
       "command": "/path/to/venv/bin/python",
       "args": ["/path/to/db-mcp-server/main.py"],
       "env": {
-        "DB_NAME": "your_db_name"
+        "DB_TYPE": "postgresql",
+        "DB_NAME": "your_db_name",
+        "DB_HOST": "localhost"
       }
     }
   }
 }
 ```
 
-- `env` 항목에 DB 연결에 필요한 환경변수(`DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` 등)를 자유롭게 지정할 수 있습니다.
-- 이 방식으로 여러 프로젝트에서 각기 다른 DB에 연결하여 사용할 수 있습니다.
+## 🛠️ 사용 가능한 도구들
+
+### 📋 **스키마 도구** 
+- `get_schema` - 전체 데이터베이스 스키마 조회
+- `get_table_stats` - 테이블별 통계 정보
+- `get_sample_data` - 샘플 데이터 조회
+- `get_column_stats` - 컬럼별 상세 통계
+
+### 🔍 **분석 도구**
+- `execute_query` - 안전한 읽기 전용 쿼리 실행
+- `explain_query` - 쿼리 실행 계획 분석
+- `optimize_query` - 쿼리 최적화 제안
+- `get_db_status` - 데이터베이스 상태 정보
+- `get_table_size` - 테이블별 크기 정보
+- `get_index_usage` - 인덱스 사용 통계
+- `analyze_performance` - 성능 병목 지점 분석
+- `suggest_indexes` - 인덱스 생성 제안
+- `optimize_tables` - 테이블 최적화 제안
+
+### 🎨 **시각화 도구**
+- `generate_schema_mermaid` - Mermaid ERD 다이어그램 생성
+- `generate_tables_summary` - 마크다운 테이블 요약
+- `generate_performance_report` - 성능 분석 리포트 (ASCII 차트 포함)
+
+## 📊 사용 예시
+
+### 스키마 시각화
+```
+😊 사용자: "데이터베이스 스키마를 ERD로 보여줘"
+🤖 AI: generate_schema_mermaid() 실행 → Mermaid 다이어그램 제공
+```
+
+### 성능 분석
+```
+😊 사용자: "성능 문제가 있는지 분석해줘"  
+🤖 AI: analyze_performance() → generate_performance_report() 실행
+     → ASCII 차트와 함께 상세한 성능 리포트 제공
+```
+
+### 테이블 현황 요약
+```
+😊 사용자: "테이블들 현황을 요약해줘"
+🤖 AI: generate_tables_summary() 실행 → 마크다운 테이블 요약 제공
+```
+
+## 🏗️ 프로젝트 구조
+
+```
+db-mcp-server/
+├── main.py                 # MCP 서버 메인 파일
+├── .env.example            # 환경변수 예시 파일
+├── requirements.txt        # Python 의존성
+├── adapters/               # 데이터베이스 어댑터
+│   ├── __init__.py        
+│   ├── base.py            # 베이스 어댑터 클래스
+│   ├── mysql.py           # MySQL/MariaDB 어댑터
+│   └── postgresql.py      # PostgreSQL 어댑터
+└── tools/                 # MCP 도구 모듈
+    ├── __init__.py
+    ├── schema_tools.py     # 스키마 관련 도구
+    ├── analysis_tools.py   # 분석 관련 도구
+    └── visualization_tools.py # 시각화 관련 도구
+```
+
+## 🚀 확장성
+
+### 새로운 데이터베이스 추가
+
+1. `adapters/` 폴더에 새 어댑터 클래스 생성
+2. `DatabaseAdapter` 베이스 클래스 상속
+3. 필요한 메서드들 구현
+4. `adapters/__init__.py`의 팩토리 함수에 추가
+
+### 새로운 도구 추가
+
+1. 해당 카테고리의 `tools/` 모듈에 함수 추가
+2. `@mcp.tool()` 데코레이터로 등록
+3. 어댑터의 메서드를 활용하여 구현
+
+## 📋 요구사항
+
+- **Python 3.8+**
+- **데이터베이스**:
+  - MySQL/MariaDB 5.7+
+  - PostgreSQL 12+
+  - SQLite 3.x
+
+## 🤝 기여하기
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 라이센스
+
+이 프로젝트는 MIT 라이센스 하에 있습니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
+
+## 🙏 감사의 말
+
+- [Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk) - MCP 프레임워크 제공
+- [FastMCP](https://github.com/pydantic/FastMCP) - 빠른 MCP 서버 구현
+- [Mermaid](https://mermaid.js.org/) - 다이어그램 시각화 도구
