@@ -24,7 +24,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
         super().__init__(config)
         
     def connect(self):
-        """PostgreSQL 데이터베이스 연결"""
+        """PostgreSQL 데이터베이스 연결 (보안 강화)"""
         try:
             # PostgreSQL 연결 파라미터 변환
             pg_config = {
@@ -32,12 +32,30 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 'port': self.config.get('port', 5432),
                 'database': self.config.get('db'),
                 'user': self.config.get('user'),
-                'password': self.config.get('password')
+                'password': self.config.get('password'),
+                'connect_timeout': 10,
+                'application_name': 'mcp-db-server-secure'
             }
+            
+            # SSL 강제 (가능한 경우)
+            if 'sslmode' not in pg_config:
+                pg_config['sslmode'] = 'prefer'
             
             self.connection = psycopg2.connect(**pg_config)
             self.connection.autocommit = True
-            logger.info("PostgreSQL 데이터베이스 연결 성공")
+            
+            # 추가 보안 설정
+            with self.connection.cursor() as cursor:
+                # 보안 관련 설정
+                cursor.execute("SET statement_timeout = '30s'")  # 쿼리 타임아웃
+                cursor.execute("SET lock_timeout = '10s'")       # 락 타임아웃
+                cursor.execute("SET idle_in_transaction_session_timeout = '60s'")  # 유휴 세션 타임아웃
+                
+            logger.info("PostgreSQL 데이터베이스 연결 성공 (보안 강화)")
+            
+            # 스키마 캐시 로드
+            self.identifier_manager.load_schema_cache(self)
+            
         except Exception as e:
             logger.error(f"PostgreSQL 연결 실패: {str(e)}")
             raise
@@ -53,14 +71,21 @@ class PostgreSQLAdapter(DatabaseAdapter):
         return f'"{identifier}"'
         
     def execute_query(self, query: str, params: tuple = None) -> List[Dict]:
-        """PostgreSQL 쿼리 실행"""
-        if not query.strip().upper().startswith('SELECT'):
-            raise ValueError("읽기 전용 쿼리(SELECT)만 실행 가능합니다.")
+        """PostgreSQL 쿼리 실행 (보안 강화)"""
+        try:
+            # 1. 읽기 전용 모드 검증
+            if self.read_only:
+                self.validator.validate_query(query, "postgresql")
             
-        with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-            cursor.execute(query, params or ())
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            # 2. 쿼리 실행
+            with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params or ())
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"쿼리 실행 실패: {str(e)}")
+            raise
             
     def get_tables(self) -> List[str]:
         """테이블 목록 조회"""
@@ -171,40 +196,56 @@ class PostgreSQLAdapter(DatabaseAdapter):
             ]
             
     def get_table_stats(self, table_name: str) -> Dict:
-        """테이블 통계 정보"""
-        schema = self.config.get('schema', 'public')
-        with self.connection.cursor() as cursor:
-            # 전체 행 수 조회
-            cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table_name}"')
-            total_rows = cursor.fetchone()[0]
+        """테이블 통계 정보 (보안 강화)"""
+        try:
+            # 1. 테이블명 검증
+            self.identifier_manager.validate_table_name(table_name)
             
-            # 컬럼별 통계
-            table_schema = self.get_table_schema(table_name)
-            column_stats = {}
-            
-            for col in table_schema:
-                col_name = col['name']
-                # NULL 값 비율
-                cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table_name}" WHERE "{col_name}" IS NULL')
-                null_count = cursor.fetchone()[0]
-                null_ratio = (null_count / total_rows * 100) if total_rows > 0 else 0
+            schema = self.config.get('schema', 'public')
+            with self.connection.cursor() as cursor:
+                # 2. 안전한 테이블명 사용
+                safe_schema = self.identifier_manager.get_safe_identifier(schema, "postgresql")
+                safe_table_name = self.identifier_manager.get_safe_identifier(table_name, "postgresql")
                 
-                # 고유값 수
-                cursor.execute(f'SELECT COUNT(DISTINCT "{col_name}") FROM "{schema}"."{table_name}"')
-                unique_count = cursor.fetchone()[0]
+                # 3. 전체 행 수 조회
+                cursor.execute(f'SELECT COUNT(*) FROM {safe_schema}.{safe_table_name}')
+                total_rows = cursor.fetchone()[0]
                 
-                column_stats[col_name] = {
+                # 4. 컬럼별 통계
+                table_schema = self.get_table_schema(table_name)
+                column_stats = {}
+                
+                for col in table_schema:
+                    col_name = col['name']
+                    
+                    # 컬럼명 검증
+                    self.identifier_manager.validate_column_name(table_name, col_name)
+                    safe_col_name = self.identifier_manager.get_safe_identifier(col_name, "postgresql")
+                    
+                    # NULL 값 비율
+                    cursor.execute(f'SELECT COUNT(*) FROM {safe_schema}.{safe_table_name} WHERE {safe_col_name} IS NULL')
+                    null_count = cursor.fetchone()[0]
+                    null_ratio = (null_count / total_rows * 100) if total_rows > 0 else 0
+                    
+                    # 고유값 수
+                    cursor.execute(f'SELECT COUNT(DISTINCT {safe_col_name}) FROM {safe_schema}.{safe_table_name}')
+                    unique_count = cursor.fetchone()[0]
+                    
+                    column_stats[col_name] = {
+                        "total_rows": total_rows,
+                        "null_count": null_count,
+                        "null_ratio": round(null_ratio, 2),
+                        "unique_values": unique_count
+                    }
+                
+                return {
+                    "table_name": table_name,
                     "total_rows": total_rows,
-                    "null_count": null_count,
-                    "null_ratio": round(null_ratio, 2),
-                    "unique_values": unique_count
+                    "column_stats": column_stats
                 }
-            
-            return {
-                "table_name": table_name,
-                "total_rows": total_rows,
-                "column_stats": column_stats
-            }
+        except Exception as e:
+            logger.error(f"테이블 통계 조회 실패: {str(e)}")
+            raise
             
     def get_table_size(self, table_name: str) -> Dict:
         """테이블 크기 정보"""

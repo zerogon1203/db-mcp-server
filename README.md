@@ -1,14 +1,21 @@
 # 🗄️ MCP Database Server
 
-> **다중 데이터베이스 지원 MCP 서버** - Cursor IDE 및 Claude와 연동 가능한 Model Context Protocol 서버
+> **보안 강화된 다중 데이터베이스 지원 MCP 서버** - Cursor IDE 및 Claude와 연동 가능한 Model Context Protocol 서버
 
-MySQL, PostgreSQL을 지원하는 강력한 데이터베이스 분석 및 시각화 도구입니다.
+MySQL, PostgreSQL을 지원하는 **엄격한 보안 정책**을 적용한 데이터베이스 분석 및 시각화 도구입니다.
 
 ## ✨ 주요 기능
 
+### 🔒 **보안 기능 (NEW!)**
+- **읽기 전용 모드 강제** - SELECT 쿼리만 허용
+- **SQL Injection 방지** - 다중 문장 실행 및 금지 동사 차단
+- **식별자 화이트리스트** - 테이블/컬럼명 검증
+- **파라미터 바인딩 강제** - 안전한 쿼리 실행
+- **MySQL/PostgreSQL 위험 기능 차단** - INTO OUTFILE, COPY 등
+
 ### 🎯 **다중 데이터베이스 지원**
-- **MySQL/MariaDB** - 완전 지원
-- **PostgreSQL** - 완전 지원  
+- **MySQL/MariaDB** - 완전 지원 (보안 강화)
+- **PostgreSQL** - 완전 지원 (보안 강화)
 - **SQLite** - 기본 지원 (준비 중)
 
 ### 📊 **시각화 도구**
@@ -35,6 +42,20 @@ pip install -r requirements.txt
 
 ## ⚙️ 설정
 
+### 🔒 보안 설정 (중요!)
+
+**프로덕션 환경에서는 반드시 다음 설정을 적용하세요:**
+
+```env
+# 읽기 전용 모드 강제
+READ_ONLY=true
+STRICT_READONLY=true
+
+# 보안 강화된 데이터베이스 계정 사용
+DB_USER=readonly_user
+DB_PASSWORD=secure_password
+```
+
 ### 환경변수 설정
 
 `.env` 파일을 생성하고 데이터베이스 정보를 설정하세요:
@@ -43,11 +64,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### MySQL/MariaDB 설정
+### MySQL/MariaDB 설정 (보안 강화)
 ```env
 DB_TYPE=mysql
 DB_HOST=localhost
-DB_USER=root
+DB_USER=readonly_user  # 읽기 전용 계정 사용
 DB_PASSWORD=your_password
 DB_NAME=your_database
 DB_CHARSET=utf8mb4
@@ -93,6 +114,36 @@ DB_PATH=./database.sqlite
     }
   }
 }
+```
+
+## 🔒 보안
+
+### 보안 정책
+
+이 서버는 엄격한 보안 정책을 적용합니다:
+
+- **읽기 전용 모드**: SELECT 쿼리만 허용
+- **SQL Injection 방지**: 다중 문장 실행 및 금지 동사 차단
+- **식별자 검증**: 테이블/컬럼명 화이트리스트 검증
+- **파라미터 바인딩**: 모든 사용자 입력은 안전한 방식으로 처리
+
+### 보안 설정
+
+자세한 보안 설정은 [SECURITY.md](SECURITY.md)를 참조하세요.
+
+### 데이터베이스 계정 권한
+
+**중요**: 프로덕션 환경에서는 반드시 읽기 전용 계정을 사용하세요:
+
+```sql
+-- MySQL 예시
+CREATE USER 'mcp_readonly'@'%' IDENTIFIED BY 'secure_password';
+GRANT SELECT ON your_database.* TO 'mcp_readonly'@'%';
+
+-- PostgreSQL 예시
+CREATE USER mcp_readonly WITH PASSWORD 'secure_password';
+GRANT CONNECT ON DATABASE your_database TO mcp_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_readonly;
 ```
 
 ## 🛠️ 사용 가능한 도구들

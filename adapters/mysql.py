@@ -16,10 +16,43 @@ class MySQLAdapter(DatabaseAdapter):
         super().__init__(config)
         
     def connect(self):
-        """MySQL 데이터베이스 연결"""
+        """MySQL 데이터베이스 연결 (보안 강화)"""
         try:
-            self.connection = pymysql.connect(**self.config)
-            logger.info("MySQL 데이터베이스 연결 성공")
+            # 보안 강화된 연결 설정
+            secure_config = self.config.copy()
+            
+            # Local infile 비활성화 (보안)
+            secure_config['local_infile'] = False
+            
+            # 연결 타임아웃 설정
+            secure_config['connect_timeout'] = 10
+            secure_config['read_timeout'] = 30
+            secure_config['write_timeout'] = 30
+            
+            self.connection = pymysql.connect(**secure_config)
+            
+            # 추가 보안 설정
+            with self.connection.cursor() as cursor:
+                # SQL 모드 설정 (엄격 모드)
+                cursor.execute("SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'")
+                
+                # Local infile 비활성화 (세션 단위). 권한 부족 시 무시
+                try:
+                    cursor.execute("SET SESSION local_infile = 0")
+                except Exception:
+                    pass
+                
+                # 보안 관련 변수 설정 (권한 없을 수 있음) - 실패해도 무시
+                try:
+                    cursor.execute("SET SESSION sql_log_bin = 0")  # 바이너리 로그 비활성화 (세션)
+                except Exception:
+                    pass
+                
+            logger.info("MySQL 데이터베이스 연결 성공 (보안 강화)")
+            
+            # 스키마 캐시 로드
+            self.identifier_manager.load_schema_cache(self)
+            
         except Exception as e:
             logger.error(f"MySQL 연결 실패: {str(e)}")
             raise
@@ -35,16 +68,27 @@ class MySQLAdapter(DatabaseAdapter):
         return f"`{identifier}`"
         
     def execute_query(self, query: str, params: tuple = None) -> List[Dict]:
-        """MySQL 쿼리 실행"""
-        if not query.strip().upper().startswith('SELECT'):
-            raise ValueError("읽기 전용 쿼리(SELECT)만 실행 가능합니다.")
+        """MySQL 쿼리 실행 (보안 강화)"""
+        try:
+            # 1. 읽기 전용 모드 검증
+            if self.read_only:
+                self.validator.validate_query(query, "mysql")
             
-        with self.connection.cursor() as cursor:
-            cursor.execute(query, params or ())
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            
-            return [dict(zip(columns, row)) for row in rows]
+            # 2. 쿼리 실행
+            with self.connection.cursor() as cursor:
+                cursor.execute(query, params or ())
+                
+                # 결과가 있는 경우에만 컬럼 정보 추출
+                if cursor.description:
+                    columns = [desc[0] for desc in cursor.description]
+                    rows = cursor.fetchall()
+                    return [dict(zip(columns, row)) for row in rows]
+                else:
+                    return []
+                    
+        except Exception as e:
+            logger.error(f"쿼리 실행 실패: {str(e)}")
+            raise
             
     def get_tables(self) -> List[str]:
         """테이블 목록 조회"""
@@ -88,39 +132,54 @@ class MySQLAdapter(DatabaseAdapter):
             ]
             
     def get_table_stats(self, table_name: str) -> Dict:
-        """테이블 통계 정보"""
-        with self.connection.cursor() as cursor:
-            # 전체 행 수 조회
-            cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
-            total_rows = cursor.fetchone()[0]
+        """테이블 통계 정보 (보안 강화)"""
+        try:
+            # 1. 테이블명 검증
+            self.identifier_manager.validate_table_name(table_name)
             
-            # 컬럼별 통계
-            schema = self.get_table_schema(table_name)
-            column_stats = {}
-            
-            for col in schema:
-                col_name = col['name']
-                # NULL 값 비율
-                cursor.execute(f"SELECT COUNT(*) FROM `{table_name}` WHERE `{col_name}` IS NULL")
-                null_count = cursor.fetchone()[0]
-                null_ratio = (null_count / total_rows * 100) if total_rows > 0 else 0
+            with self.connection.cursor() as cursor:
+                # 2. 안전한 테이블명 사용
+                safe_table_name = self.identifier_manager.get_safe_identifier(table_name, "mysql")
                 
-                # 고유값 수
-                cursor.execute(f"SELECT COUNT(DISTINCT `{col_name}`) FROM `{table_name}`")
-                unique_count = cursor.fetchone()[0]
+                # 3. 전체 행 수 조회 (파라미터 바인딩)
+                cursor.execute(f"SELECT COUNT(*) FROM {safe_table_name}")
+                total_rows = cursor.fetchone()[0]
                 
-                column_stats[col_name] = {
+                # 4. 컬럼별 통계
+                schema = self.get_table_schema(table_name)
+                column_stats = {}
+                
+                for col in schema:
+                    col_name = col['name']
+                    
+                    # 컬럼명 검증
+                    self.identifier_manager.validate_column_name(table_name, col_name)
+                    safe_col_name = self.identifier_manager.get_safe_identifier(col_name, "mysql")
+                    
+                    # NULL 값 비율 (파라미터 바인딩)
+                    cursor.execute(f"SELECT COUNT(*) FROM {safe_table_name} WHERE {safe_col_name} IS NULL")
+                    null_count = cursor.fetchone()[0]
+                    null_ratio = (null_count / total_rows * 100) if total_rows > 0 else 0
+                    
+                    # 고유값 수 (파라미터 바인딩)
+                    cursor.execute(f"SELECT COUNT(DISTINCT {safe_col_name}) FROM {safe_table_name}")
+                    unique_count = cursor.fetchone()[0]
+                    
+                    column_stats[col_name] = {
+                        "total_rows": total_rows,
+                        "null_count": null_count,
+                        "null_ratio": round(null_ratio, 2),
+                        "unique_values": unique_count
+                    }
+                
+                return {
+                    "table_name": table_name,
                     "total_rows": total_rows,
-                    "null_count": null_count,
-                    "null_ratio": round(null_ratio, 2),
-                    "unique_values": unique_count
+                    "column_stats": column_stats
                 }
-            
-            return {
-                "table_name": table_name,
-                "total_rows": total_rows,
-                "column_stats": column_stats
-            }
+        except Exception as e:
+            logger.error(f"테이블 통계 조회 실패: {str(e)}")
+            raise
             
     def get_table_size(self, table_name: str) -> Dict:
         """테이블 크기 정보"""
