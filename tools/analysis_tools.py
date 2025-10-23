@@ -2,36 +2,57 @@
 Analysis and performance-related MCP tools.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def register_analysis_tools(mcp, adapter):
     """분석 관련 도구들을 MCP 서버에 등록"""
     
     @mcp.tool()
-    def execute_query(query: str) -> dict:
-        """안전한 읽기 전용 쿼리를 실행합니다."""
+    def execute_query(query: str, params: list = None) -> dict:
+        """안전한 읽기 전용 쿼리를 실행합니다.
+
+        Args:
+            query: 실행할 SELECT 쿼리 (값은 반드시 %s 플레이스홀더 사용)
+            params: 값 파라미터 (리스트/배열). 없으면 None
+        """
         try:
+            # 1. 쿼리 검증
+            adapter.validator.validate_query(query, adapter.get_db_type())
+            
             with adapter:
-                result = adapter.execute_query(query)
+                bound_params = tuple(params) if params is not None else None
+                result = adapter.execute_query(query, bound_params)
                 return {
                     "columns": list(result[0].keys()) if result else [],
                     "data": result,
                     "row_count": len(result)
                 }
         except Exception as e:
+            logger.error(f"쿼리 실행 실패: {str(e)}")
             raise
     
     @mcp.tool()
     def explain_query(query: str) -> dict:
         """쿼리의 실행 계획을 분석합니다."""
         try:
+            # 1. 쿼리 검증
+            adapter.validator.validate_query(query, adapter.get_db_type())
+            
             with adapter:
                 return adapter.explain_query(query)
         except Exception as e:
+            logger.error(f"쿼리 실행 계획 분석 실패: {str(e)}")
             raise
     
     @mcp.tool()
     def optimize_query(query: str) -> dict:
         """쿼리 최적화 제안을 제공합니다."""
         try:
+            # 1. 쿼리 검증
+            adapter.validator.validate_query(query, adapter.get_db_type())
+            
             with adapter:
                 # 현재 쿼리의 실행 계획 분석
                 current_plan = adapter.explain_query(query)
@@ -183,7 +204,13 @@ def register_analysis_tools(mcp, adapter):
         """인덱스 생성 제안을 제공합니다."""
         try:
             with adapter:
-                tables = [table_name] if table_name else adapter.get_tables()
+                # 1. 테이블명 검증 (제공된 경우)
+                if table_name:
+                    adapter.identifier_manager.validate_table_name(table_name)
+                    tables = [table_name]
+                else:
+                    tables = adapter.get_tables()
+                    
                 suggestions = {}
                 
                 for table in tables:

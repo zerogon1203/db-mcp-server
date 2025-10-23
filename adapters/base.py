@@ -3,8 +3,9 @@ Base database adapter for MCP server.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,15 @@ class DatabaseAdapter(ABC):
     def __init__(self, config: dict):
         self.config = config
         self.connection = None
+        self.read_only = os.getenv("READ_ONLY", "true").lower() == "true"
+        self.strict_readonly = os.getenv("STRICT_READONLY", "true").lower() == "true"
+        
+        # 보안 검증기 초기화
+        from security.query_validator import QueryValidator, SecurityLevel
+        from security.identifier_manager import IdentifierManager
+        
+        self.validator = QueryValidator(SecurityLevel.STRICT if self.strict_readonly else SecurityLevel.NORMAL)
+        self.identifier_manager = IdentifierManager(self.validator)
         
     @abstractmethod
     def connect(self):
@@ -80,15 +90,24 @@ class DatabaseAdapter(ABC):
         self.disconnect()
         
     def get_sample_data(self, table_name: str, limit: int = 5) -> Dict:
-        """샘플 데이터 조회 (공통 구현)"""
+        """샘플 데이터 조회 (보안 강화)"""
         try:
-            # 컬럼 정보 먼저 조회
+            # 1. 테이블명 검증
+            self.identifier_manager.validate_table_name(table_name)
+            
+            # 2. 컬럼 정보 먼저 조회
             schema = self.get_table_schema(table_name)
             columns = [col['name'] for col in schema]
             
-            # 샘플 데이터 조회
-            query = f"SELECT * FROM {self._quote_identifier(table_name)} LIMIT {limit}"
-            rows = self.execute_query(query)
+            # 3. 안전한 쿼리 구성 (파라미터 바인딩 사용)
+            safe_table_name = self.identifier_manager.get_safe_identifier(table_name, self.get_db_type())
+            query = f"SELECT * FROM {safe_table_name} LIMIT %s"
+            
+            # 4. 쿼리 검증
+            self.validator.validate_query(query, self.get_db_type())
+            
+            # 5. 파라미터 바인딩으로 실행
+            rows = self.execute_query(query, (limit,))
             
             return {
                 "table_name": table_name,
@@ -98,6 +117,10 @@ class DatabaseAdapter(ABC):
         except Exception as e:
             logger.error(f"샘플 데이터 조회 중 오류 발생: {str(e)}")
             raise
+            
+    def get_db_type(self) -> str:
+        """데이터베이스 타입 반환"""
+        return self.config.get('db_type', 'mysql').lower()
             
     @abstractmethod
     def _quote_identifier(self, identifier: str) -> str:
